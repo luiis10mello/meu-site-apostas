@@ -64,7 +64,7 @@ with col_data:
 if st.button("🚀 Gerar Análise & Bilhete Pronto", use_container_width=True):
     data_str = data_selecionada.strftime("%Y-%m-%d")
 
-    # Busca estrita pela data selecionada com fuso horário do Brasil (America/Sao_Paulo)
+    # Busca no fuso do Brasil
     url_fixtures = f"https://v3.football.api-sports.io/fixtures?date={data_str}&timezone=America/Sao_Paulo"
     res_fixtures = requests.get(url_fixtures, headers=HEADERS)
 
@@ -85,21 +85,21 @@ if st.button("🚀 Gerar Análise & Bilhete Pronto", use_container_width=True):
             home_team = jogo["teams"]["home"]["name"]
             away_team = jogo["teams"]["away"]["name"]
 
-            # Exibe o horário convertido para o fuso de Brasília
             horario = jogo["fixture"]["date"][11:16]
             status = jogo["fixture"]["status"]["long"]
 
             st.write("---")
             st.subheader(f"⚽ {home_team} vs {away_team}")
-            st.caption(f"Horário: {horario} (Horário de Brasília) | Status: {status}")
+            st.caption(f"Horário: {horario} (Brasília) | Status: {status}")
 
             url_pred = f"https://v3.football.api-sports.io/fixtures/predictions?fixture={fixture_id}"
             res_pred = requests.get(url_pred, headers=HEADERS)
 
-            prob_home = "33%"
-            prob_draw = "33%"
-            prob_away = "34%"
+            prob_home = "N/A"
+            prob_draw = "N/A"
+            prob_away = "N/A"
             advice = "Over 1.5 Gols ou Dupla Chance"
+            tem_dados_reais = False
 
             if res_pred.status_code == 200:
                 pred_data = res_pred.json().get("response", [])
@@ -107,32 +107,43 @@ if st.button("🚀 Gerar Análise & Bilhete Pronto", use_container_width=True):
                     predictions = pred_data[0].get("predictions", {})
                     percent = predictions.get("percent", {})
 
-                    prob_home = percent.get("home", "33%")
-                    prob_draw = percent.get("draw", "33%")
-                    prob_away = percent.get("away", "34%")
-                    advice = predictions.get("advice", advice)
+                    if percent.get("home") and percent.get("away"):
+                        prob_home = percent.get("home")
+                        prob_draw = percent.get("draw")
+                        prob_away = percent.get("away")
+                        advice = predictions.get(
+                            "advice", "Over 1.5 Gols ou Dupla Chance"
+                        )
+                        tem_dados_reais = True
 
+            # Métricas
             c1, c2, c3 = st.columns(3)
             c1.metric(f"Vitória {home_team}", prob_home)
             c2.metric("Empate", prob_draw)
             c3.metric(f"Vitória {away_team}", prob_away)
 
+            if not tem_dados_reais:
+                st.caption(
+                    "⚠️ *Probabilidades detalhadas não fornecidas pela API para este evento. Exibindo estimativa técnica.*"
+                )
+
+            # Veredito do Analista
             st.markdown("### 💡 Veredito do Analista")
             st.info(
-                f"🗣️ **Se eu fosse você, eu apostaria neste jogo da seguinte forma:**\n\n"
-                f"O confronto entre **{home_team}** e **{away_team}** apresenta um cenário de equilíbrio estatístico. "
-                f"Evite investir em Vitória Direta (ML). A melhor escolha de alta probabilidade é investir na combinação "
-                f"de **Segurança de Resultado + Média de Gols**."
+                f"🗣️ **Recomendação de Entrada:**\n\n"
+                f"Para a partida entre **{home_team}** e **{away_team}**, o modelo indica evitar entradas diretas simples (ML). "
+                f"A estratégia ideal recomendada pela análise é: **{advice}**."
             )
 
+            # Bilhete Pronto
             st.markdown("### 🎟️ Bilhete Pronto (Criar Aposta)")
 
             st.success(
                 f"📌 **SUGESTÃO DE APOSTA MONTADA (+EV)**\n\n"
                 f"• **Seleção 1:** Dupla Chance ({home_team} ou Empate) - _Odd est. ~1.30_\n\n"
                 f"• **Seleção 2:** Mais de 1.5 Gols na Partida - _Odd est. ~1.35_\n\n"
-                f"🔥 **ODD FINAL COMBINADA: @1.75** (Probabilidade Estimada: **81%**)\n\n"
-                f"_Esta é a melhor entrada para evitar cair nas pegadinhas das casas de apostas._"
+                f"🔥 **ODD FINAL COMBINADA: @1.75**\n\n"
+                f"_Entrada montada para minimizar variância em partidas com dados parciais._"
             )
 
             st.warning(
