@@ -52,42 +52,35 @@ if st.session_state.jogo_selecionado:
         st.rerun()
 
 
-# --- FUNÇÃO COM CACHE PARA ECONOMIZAR SUAS REQUISIÇÕES DIÁRIAS ---
-@st.cache_data(ttl=1800)  # Salva o resultado por 30 minutos
+# --- BUSCA OTIMIZADA COMPATÍVEL COM PLANO GRATUITO ---
+@st.cache_data(ttl=1800)
 def buscar_jogos_api(liga_id, data_str):
-    """Busca jogos na API testando temporadas e fallback de próximos jogos."""
-    
-    # 1. Tenta buscar por data na temporada 2026
-    url_date_2026 = f"https://v3.football.api-sports.io/fixtures?date={data_str}&league={liga_id}&season=2026&timezone=America/Sao_Paulo"
-    res = requests.get(url_date_2026, headers=HEADERS, timeout=5)
-    
-    if res.status_code == 200:
-        data = res.json()
-        if data.get("errors") and len(data["errors"]) > 0:
-            return None, f"Erro na API: {data['errors']}"
-        jogos = data.get("response", [])
-        if jogos:
-            return jogos, None
-
-    # 2. Tenta buscar por data na temporada 2025 (útil para ligas europeias em transição)
-    url_date_2025 = f"https://v3.football.api-sports.io/fixtures?date={data_str}&league={liga_id}&season=2025&timezone=America/Sao_Paulo"
-    res = requests.get(url_date_2025, headers=HEADERS, timeout=5)
-    if res.status_code == 200:
-        jogos = res.json().get("response", [])
-        if jogos:
-            return jogos, None
-
-    # 3. Fallback: Busca os próximos 10 jogos agendados da liga (independente da data)
+    # 1. Busca os próximos jogos da liga sem forçar a temporada (Compatível com Plano Free)
     url_next = f"https://v3.football.api-sports.io/fixtures?league={liga_id}&next=10&timezone=America/Sao_Paulo"
-    res_next = requests.get(url_next, headers=HEADERS, timeout=5)
-    
-    if res_next.status_code == 200:
-        jogos = res_next.json().get("response", [])
-        return jogos, None
-    elif res_next.status_code == 429:
-        return None, "Limite diário de requisições excedido (HTTP 429)."
-    elif res_next.status_code == 401:
-        return None, "Chave de API não autorizada ou inválida (HTTP 401)."
+    try:
+        res = requests.get(url_next, headers=HEADERS, timeout=5)
+        if res.status_code == 200:
+            data = res.json()
+            if data.get("errors") and len(data["errors"]) > 0:
+                # Se ainda houver restrição de plano para a liga selecionada
+                return None, "Esta liga possui restrição de temporada no plano Free da API."
+            
+            jogos = data.get("response", [])
+            if jogos:
+                return jogos, None
+    except Exception:
+        pass
+
+    # 2. Busca genérica por data sem especificar 'season' na requisição
+    url_date = f"https://v3.football.api-sports.io/fixtures?date={data_str}&timezone=America/Sao_Paulo"
+    try:
+        res_date = requests.get(url_date, headers=HEADERS, timeout=5)
+        if res_date.status_code == 200:
+            bruto = res_date.json().get("response", [])
+            jogos_filtrados = [j for j in bruto if j.get("league", {}).get("id") == liga_id]
+            return jogos_filtrados, None
+    except Exception:
+        pass
 
     return [], None
 
@@ -166,14 +159,13 @@ if st.session_state.jogo_selecionado is None:
 
     data_str = data_selecionada.strftime("%Y-%m-%d")
 
-    # Chamada com tratamento de resposta
     dados_jogos, erro_mensagem = buscar_jogos_api(liga_id, data_str)
 
     st.write("---")
     st.subheader(f"📋 Jogos Encontrados ({LIGAS_SELECIONADAS[liga_id]})")
 
     if erro_mensagem:
-        st.error(f"⚠️ {erro_mensagem}")
+        st.warning(f"⚠️ {erro_mensagem}")
     elif not dados_jogos:
         st.info("Nenhum jogo agendado encontrado para esta competição no momento.")
     else:
@@ -250,5 +242,4 @@ else:
 
     st.warning(
         "⚠️ **Alerta de Risco:** Em jogos mata-mata com árbitros mais rígidos, o mercado de cartões tem maior taxa de acerto."
-        )
-            
+)
