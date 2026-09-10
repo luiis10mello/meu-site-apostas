@@ -27,7 +27,7 @@ st.caption(
 )
 
 # Chave direta para garantir o funcionamento imediato do app
-API_KEY = "9fa716f88fd2bbab00c313779ac49244"
+API_KEY = st.secrets["API_KEY"]
 HEADERS = {"x-apisports-key": API_KEY}
 
 LIGAS_SELECIONADAS = {
