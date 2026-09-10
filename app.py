@@ -81,7 +81,6 @@ def obter_analise_real(fixture_id):
     except Exception:
         pass
 
-    # Sem invenção de porcentagem caso a API não retorne dados
     return (
         "Indisponível",
         "Indisponível",
@@ -93,24 +92,30 @@ def obter_analise_real(fixture_id):
 
 if st.button("🚀 Gerar Análise & Bilhete Pronto", use_container_width=True):
     data_str = data_selecionada.strftime("%Y-%m-%d")
+    dados_jogos = []
 
-    # Busca jogos no fuso horário do Brasil
-    url_fixtures = f"https://v3.football.api-sports.io/fixtures?date={data_str}&timezone=America/Sao_Paulo"
-    
     try:
+        # 1. Tenta buscar os jogos do dia selecionado
+        url_fixtures = f"https://v3.football.api-sports.io/fixtures?date={data_str}&timezone=America/Sao_Paulo"
         res_fixtures = requests.get(url_fixtures, headers=HEADERS, timeout=5)
-        dados_jogos = []
         if res_fixtures.status_code == 200:
             bruto = res_fixtures.json().get("response", [])
             dados_jogos = [
                 j for j in bruto if j.get("league", {}).get("id") == liga_id
             ]
+
+        # 2. FALLBACK: Se não houver jogos no dia, busca os próximos jogos da temporada
+        if not dados_jogos:
+            url_next = f"https://v3.football.api-sports.io/fixtures?league={liga_id}&season=2026&next=10&timezone=America/Sao_Paulo"
+            res_next = requests.get(url_next, headers=HEADERS, timeout=5)
+            if res_next.status_code == 200:
+                dados_jogos = res_next.json().get("response", [])
     except Exception:
         dados_jogos = []
 
     if not dados_jogos:
         st.warning(
-            "Nenhum jogo encontrado para esta competição na data selecionada."
+            "Nenhum jogo encontrado para esta competição no momento."
         )
     else:
         for jogo in dados_jogos:
@@ -118,11 +123,12 @@ if st.button("🚀 Gerar Análise & Bilhete Pronto", use_container_width=True):
             home_team = jogo["teams"]["home"]["name"]
             away_team = jogo["teams"]["away"]["name"]
 
+            data_jogo = jogo["fixture"]["date"][:10]
             horario = jogo["fixture"]["date"][11:16]
-            status = jogo["fixture"]["status"]["long"]
+            status = jogo["fixture"]["status"]["long"] if "long" in jogo["fixture"]["status"] else "Pré-Jogo"
 
             st.write("---")
-            st.subheader(f"⚽ {home_team} vs {away_team}")
+            st.subheader(f"⚽ [{data_jogo}] {home_team} vs {away_team}")
             st.caption(f"Horário: {horario} (Brasília) | Status: {status}")
 
             prob_home, prob_draw, prob_away, advice, tem_dados = (
