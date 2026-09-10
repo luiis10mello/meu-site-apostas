@@ -2,17 +2,31 @@ import datetime
 import requests
 import streamlit as st
 
+# Configuração da página
 st.set_page_config(
-    page_title="Dashboard +EV | Analise de Apostas",
+    page_title="Analisador +EV | Apostas",
+    page_icon="⚽",
     layout="centered",
     initial_sidebar_state="collapsed",
 )
 
-st.title("🎯 Analisador de Apostas de Valor (+EV)")
+# Meta tags PWA para celular
+pwa_html = """
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Analisador +EV">
+    <meta name="theme-color" content="#0e1117">
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/5353/5353981.png">
+"""
+st.markdown(pwa_html, unsafe_allow_html=True)
+
+st.title("🎯 Analisador de Apostas (+EV)")
 st.caption(
-    "Analise matematica baseada no retrospecto e dados estatisticos da API-Sports."
+    "Análise matemática baseada no retrospecto e dados estatísticos da API-Sports."
 )
 
+# Chave direta para garantir o funcionamento imediato do app
 API_KEY = "9fa716f88fd2bbab00c313779ac49244"
 HEADERS = {"x-apisports-key": API_KEY}
 
@@ -43,7 +57,7 @@ with col_liga:
 with col_data:
     data_selecionada = st.date_input("Data:", datetime.date.today())
 
-if st.button("🚀 Gerar Analise & Bilhete Pronto", use_container_width=True):
+if st.button("🚀 Gerar Análise & Bilhete Pronto", use_container_width=True):
     data_str = data_selecionada.strftime("%Y-%m-%d")
 
     url_fixtures = f"https://v3.football.api-sports.io/fixtures?date={data_str}"
@@ -69,7 +83,7 @@ if st.button("🚀 Gerar Analise & Bilhete Pronto", use_container_width=True):
 
     if not dados_jogos:
         st.warning(
-            "Nenhum jogo encontrado para esta competicao na data selecionada."
+            "Nenhum jogo encontrado para esta competição na data selecionada."
         )
     else:
         for jogo in dados_jogos:
@@ -81,7 +95,7 @@ if st.button("🚀 Gerar Analise & Bilhete Pronto", use_container_width=True):
 
             st.write("---")
             st.subheader(f"⚽ {home_team} vs {away_team}")
-            st.caption(f"Horario: {horario} UTC | Status: {status}")
+            st.caption(f"Horário: {horario} UTC | Status: {status}")
 
             url_pred = f"https://v3.football.api-sports.io/fixtures/predictions?fixture={fixture_id}"
             res_pred = requests.get(url_pred, headers=HEADERS)
@@ -102,32 +116,32 @@ if st.button("🚀 Gerar Analise & Bilhete Pronto", use_container_width=True):
                     prob_away = percent.get("away", "34%")
                     advice = predictions.get("advice", advice)
 
-            # 1. Metricas de Probabilidade da API
+            # Métricas
             c1, c2, c3 = st.columns(3)
-            c1.metric(f"Vitoria {home_team}", prob_home)
+            c1.metric(f"Vitória {home_team}", prob_home)
             c2.metric("Empate", prob_draw)
-            c3.metric(f"Vitoria {away_team}", prob_away)
+            c3.metric(f"Vitória {away_team}", prob_away)
 
-            # 2. Veredito Pessoal ("Se eu fosse voce...")
+            # Veredito
             st.markdown("### 💡 Veredito do Analista")
             st.info(
-                f"🗣️ **Se eu fosse voce, eu apostaria neste jogo da seguinte forma:**\n\n"
-                f"O confronto entre **{home_team}** e **{away_team}** apresenta um cenario de equilibrio estatistico. "
-                f"Evite investir em Vitoria Direta (ML). A melhor escolha de alta probabilidade para colocar o seu dinheiro "
-                f"e na combinada de **Seguranca de Resultado + Média de Gols**."
+                f"🗣️ **Se eu fosse você, eu apostaria neste jogo da seguinte forma:**\n\n"
+                f"O confronto entre **{home_team}** e **{away_team}** apresenta um cenário de equilíbrio estatístico. "
+                f"Evite investir em Vitória Direta (ML). A melhor escolha de alta probabilidade é investir na combinação "
+                f"de **Segurança de Resultado + Média de Gols**."
             )
 
-            # 3. Bilhete Criado / Odd Recomendada
+            # Bilhete Pronto
             st.markdown("### 🎟️ Bilhete Pronto (Criar Aposta)")
 
             st.success(
-                f"📌 **SUGESTAO DE APOSTA MONTADA (+EV)**\n\n"
-                f"• **Selecao 1:** Dupla Chance ({home_team} ou Empate) - _Odd est. ~1.30_\n\n"
-                f"• **Selecao 2:** Mais de 1.5 Gols na Partida - _Odd est. ~1.35_\n\n"
+                f"📌 **SUGESTÃO DE APOSTA MONTADA (+EV)**\n\n"
+                f"• **Seleção 1:** Dupla Chance ({home_team} ou Empate) - _Odd est. ~1.30_\n\n"
+                f"• **Seleção 2:** Mais de 1.5 Gols na Partida - _Odd est. ~1.35_\n\n"
                 f"🔥 **ODD FINAL COMBINADA: @1.75** (Probabilidade Estimada: **81%**)\n\n"
-                f"_Esta e a melhor entrada onde a casa de apostas nao consegue te enganar com odds infladas e de alto risco._"
+                f"_Esta é a melhor entrada para evitar cair nas pegadinhas das casas de apostas._"
             )
 
             st.warning(
-                "⚠️ **Alerta de Risco:** Nao faca entradas em 'Ambas Marcam' caso o time visitante jogar muito recuado na altitude ou fora de casa."
+                "⚠️ **Alerta de Risco:** Não faça entradas em 'Ambas Marcam' caso o time visitante jogue muito recuado fora de casa."
             )
