@@ -26,12 +26,8 @@ st.caption(
     "Análise matemática baseada no retrospecto e dados estatísticos da API-Sports."
 )
 
-# Leitura segura da chave de API
-try:
-    API_KEY = st.secrets["API_KEY"]
-except Exception:
-    API_KEY = "ea108b30946db6ef570007ef4baf86d2"
-
+# Chave de API configurada diretamente
+API_KEY = "9fa716f88fd2bbab00c313779ac49244"
 HEADERS = {"x-apisports-key": API_KEY}
 
 LIGAS_SELECIONADAS = {
@@ -100,14 +96,17 @@ if st.button("🚀 Gerar Análise & Bilhete Pronto", use_container_width=True):
 
     # Busca jogos no fuso horário do Brasil
     url_fixtures = f"https://v3.football.api-sports.io/fixtures?date={data_str}&timezone=America/Sao_Paulo"
-    res_fixtures = requests.get(url_fixtures, headers=HEADERS)
-
-    dados_jogos = []
-    if res_fixtures.status_code == 200:
-        bruto = res_fixtures.json().get("response", [])
-        dados_jogos = [
-            j for j in bruto if j.get("league", {}).get("id") == liga_id
-        ]
+    
+    try:
+        res_fixtures = requests.get(url_fixtures, headers=HEADERS, timeout=5)
+        dados_jogos = []
+        if res_fixtures.status_code == 200:
+            bruto = res_fixtures.json().get("response", [])
+            dados_jogos = [
+                j for j in bruto if j.get("league", {}).get("id") == liga_id
+            ]
+    except Exception:
+        dados_jogos = []
 
     if not dados_jogos:
         st.warning(
