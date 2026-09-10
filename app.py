@@ -58,18 +58,24 @@ if st.session_state.jogo_selecionado:
         st.rerun()
 
 
-# --- FUNÇÃO COM CACHE PARA ECONOMIZAR REQUISIÇÕES DA API ---
+# --- BUSCA DIRETA POR LIGA E TEMPORADA (GARANTE RETORNO DA API) ---
 @st.cache_data(ttl=1800)
-def buscar_jogos_por_data(data_str, liga_id):
-    url_fixtures = f"https://v3.football.api-sports.io/fixtures?date={data_str}&timezone=America/Sao_Paulo"
+def buscar_jogos_por_liga(liga_id, data_str):
+    # Tenta buscar os próximos jogos da liga específica (evita bloqueio de data do plano Free)
+    url_next = f"https://v3.football.api-sports.io/fixtures?league={liga_id}&next=15&timezone=America/Sao_Paulo"
     try:
-        res = requests.get(url_fixtures, headers=HEADERS, timeout=5)
+        res = requests.get(url_next, headers=HEADERS, timeout=5)
         if res.status_code == 200:
-            bruto = res.json().get("response", [])
-            jogos_filtrados = [
-                j for j in bruto if j.get("league", {}).get("id") == liga_id
-            ]
-            return jogos_filtrados
+            data = res.json()
+            if data.get("errors") and len(data["errors"]) > 0:
+                return []
+            
+            bruto = data.get("response", [])
+            # Filtra opcionalmente pela data escolhida, ou exibe os mais próximos se não houver jogo exato hoje
+            jogos_data = [j for j in bruto if j["fixture"]["date"].startswith(data_str)]
+            if jogos_data:
+                return jogos_data
+            return bruto  # Se não houver exato hoje, retorna os próximos agendados da liga
     except Exception:
         pass
     return []
@@ -89,36 +95,9 @@ def calcular_probabilidades_odds(fixture_id, home_team, away_team):
                     for bet in bets:
                         if bet.get("id") == 1:  # Match Winner
                             values = bet.get("values", [])
-                            odd_home = float(
-                                next(
-                                    (
-                                        i["odd"]
-                                        for i in values
-                                        if i["value"] == "Home"
-                                    ),
-                                    0,
-                                )
-                            )
-                            odd_draw = float(
-                                next(
-                                    (
-                                        i["odd"]
-                                        for i in values
-                                        if i["value"] == "Draw"
-                                    ),
-                                    0,
-                                )
-                            )
-                            odd_away = float(
-                                next(
-                                    (
-                                        i["odd"]
-                                        for i in values
-                                        if i["value"] == "Away"
-                                    ),
-                                    0,
-                                )
-                            )
+                            odd_home = float(next((i["odd"] for i in values if i["value"] == "Home"), 0))
+                            odd_draw = float(next((i["odd"] for i in values if i["value"] == "Draw"), 0))
+                            odd_away = float(next((i["odd"] for i in values if i["value"] == "Away"), 0))
 
                             if odd_home > 0 and odd_draw > 0 and odd_away > 0:
                                 prob_h = 1 / odd_home
@@ -155,7 +134,6 @@ def calcular_probabilidades_odds(fixture_id, home_team, away_team):
 
 
 def calcular_mercados_especiais(home_team, away_team):
-    """Calcula probabilidades limpas para Escanteios e Gols."""
     escanteios = {"linha": "Mais de 8.5 Escanteios", "prob": "78%", "odd": "1.52"}
     gols = {"linha": "Mais de 1.5 Gols na Partida", "prob": "80%", "odd": "1.35"}
     cartoes = {"linha": "Mais de 3.5 Cartões Amarelos", "prob": "74%", "odd": "1.58"}
@@ -175,11 +153,10 @@ if st.session_state.jogo_selecionado is None:
 
     st.write("")
     
-    # Botão de ação principal solicitado
     gerar_clicado = st.button("🚀 Gerar Análise & Bilhete Pronto", use_container_width=True)
 
     if gerar_clicado:
-        st.session_state.dados_carregados = buscar_jogos_por_data(data_str, liga_id)
+        st.session_state.dados_carregados = buscar_jogos_por_liga(liga_id, data_str)
         st.session_state.busca_realizada = True
 
     if "busca_realizada" in st.session_state and st.session_state.busca_realizada:
@@ -189,15 +166,16 @@ if st.session_state.jogo_selecionado is None:
         dados_jogos = st.session_state.get("dados_carregados", [])
 
         if not dados_jogos:
-            st.info("Nenhum jogo agendado para esta competição na data escolhida.")
+            st.info("Nenhum jogo encontrado para esta competição no momento.")
         else:
             for jogo in dados_jogos:
                 home_team = jogo["teams"]["home"]["name"]
                 away_team = jogo["teams"]["away"]["name"]
+                data_jogo = jogo["fixture"]["date"][:10]
                 horario = jogo["fixture"]["date"][11:16]
                 status = jogo["fixture"]["status"]["short"]
 
-                label_botao = f"⚽ {horario} | {home_team} vs {away_team} ({status})"
+                label_botao = f"⚽ [{data_jogo}] {horario} | {home_team} vs {away_team} ({status})"
                 if st.button(label_botao, key=f"jogo_{jogo['fixture']['id']}"):
                     st.session_state.jogo_selecionado = jogo
                     st.rerun()
@@ -214,7 +192,6 @@ else:
     st.subheader(f"⚽ {home_team} vs {away_team}")
     st.caption(f"Horário: {horario} (Brasília) | Status: {status}")
 
-    # 1. Probabilidades do Resultado (1X2)
     prob_home, prob_draw, prob_away, advice, fonte = (
         calcular_probabilidades_odds(fixture_id, home_team, away_team)
     )
@@ -228,7 +205,6 @@ else:
 
     st.write("---")
 
-    # 2. Mercados Especiais
     esc, gols, car = calcular_mercados_especiais(home_team, away_team)
 
     st.markdown("### 🚩 Mercados Especiais")
@@ -248,7 +224,6 @@ else:
 
     st.write("---")
 
-    # Veredito e Bilhete
     st.markdown("### 💡 Veredito do Analista")
     st.info(
         f"🗣️ **Recomendação Tática:**\n\n"
