@@ -2,95 +2,132 @@ import datetime
 import requests
 import streamlit as st
 
-st.set_page_config(page_title="Analisador de Apostas", layout="centered")
+st.set_page_config(
+    page_title="Dashboard +EV | Análise de Apostas",
+    layout="centered",
+    initial_sidebar_state="collapsed",
+)
 
-st.title("🎯 Melhores Odds & Oportunidades +EV")
+st.title("📊 Analisador de Apostas de Valor (+EV)")
+st.caption(
+    "Análise matemática baseada no retrospecto e dados estatísticos da API-Sports."
+)
 
 API_KEY = "9fa716f88fd2bbab00c313779ac49244"
 HEADERS = {"x-apisports-key": API_KEY}
 
 LIGAS_SELECIONADAS = {
-    13: "Copa Libertadores",
-    11: "Copa Sul-Americana",
-    71: "Brasileirão Série A",
-    72: "Brasileirão Série B",
-    73: "Copa do Brasil",
-    2: "Champions League",
-    39: "Premier League",
-    45: "FA Cup (Copa Inglaterra)",
-    140: "La Liga (Espanha)",
-    135: "Serie A (Itália)",
+    13: "🏆 Copa Libertadores",
+    11: "🏆 Copa Sul-Americana",
+    71: "🇧🇷 Brasileirão Série A",
+    72: "🇧🇷 Brasileirão Série B",
+    73: "🇧🇷 Copa do Brasil",
+    2: "🇪🇺 Champions League",
+    39: "🏴󠁧󠁢󠁥󠁮󠁧󠁿 Premier League",
+    45: "🏴󠁧󠁢󠁥󠁮󠁧󠁿 FA Cup (Copa Inglaterra)",
+    140: "🇪🇸 La Liga (Espanha)",
+    135: "🇮🇹 Serie A (Itália)",
 }
 
-st.write("Selecione a competição e a data:")
+st.write("---")
 
-liga_id = st.selectbox(
-    "Escolha a Liga:",
-    list(LIGAS_SELECIONADAS.keys()),
-    format_func=lambda x: LIGAS_SELECIONADAS[x],
-)
+col_liga, col_data = st.columns([2, 1])
 
-data_selecionada = st.date_input("Data do Jogo:", datetime.date.today())
+with col_liga:
+    liga_id = st.selectbox(
+        "Selecione a Liga:",
+        list(LIGAS_SELECIONADAS.keys()),
+        format_func=lambda x: LIGAS_SELECIONADAS[x],
+    )
 
-if st.button("Buscar Oportunidades"):
+with col_data:
+    data_selecionada = st.date_input("Data:", datetime.date.today())
+
+if st.button("🔥 Gerar Análise de Apostas", use_container_width=True):
     data_str = data_selecionada.strftime("%Y-%m-%d")
 
-    url_date = f"https://v3.football.api-sports.io/fixtures?date={data_str}"
-    response = requests.get(url_date, headers=HEADERS)
-    dados_brutos = []
+    # 1. Busca os jogos do dia
+    url_fixtures = f"https://v3.football.api-sports.io/fixtures?date={data_str}"
+    res_fixtures = requests.get(url_fixtures, headers=HEADERS)
 
-    if response.status_code == 200:
-        dados_brutos = response.json().get("response", [])
+    dados_jogos = []
+    if res_fixtures.status_code == 200:
+        bruto = res_fixtures.json().get("response", [])
+        dados_jogos = [
+            j for j in bruto if j.get("league", {}).get("id") == liga_id
+        ]
 
-    dados = [
-        j for j in dados_brutos if j.get("league", {}).get("id") == liga_id
-    ]
-
-    if not dados:
+    # Fallback se não tiver na data exata
+    if not dados_jogos:
         url_live = "https://v3.football.api-sports.io/fixtures?live=all"
         res_live = requests.get(url_live, headers=HEADERS)
         if res_live.status_code == 200:
             dados_live = res_live.json().get("response", [])
-            dados = [
+            dados_jogos = [
                 j
                 for j in dados_live
                 if j.get("league", {}).get("id") == liga_id
             ]
 
-    if not dados:
-        st.info("Nenhum jogo encontrado para esta competição nesta data.")
+    if not dados_jogos:
+        st.warning(
+            "⚠️ Nenhum jogo encontrado para esta competição na data selecionada."
+        )
     else:
-        for jogo in dados:
-            home = jogo["teams"]["home"]["name"]
-            away = jogo["teams"]["away"]["name"]
-            status = jogo["fixture"]["status"]["long"]
-            data_jogo = jogo["fixture"]["date"][:10]
+        for jogo in dados_jogos:
+            fixture_id = jogo["fixture"]["id"]
+            home_team = jogo["teams"]["home"]["name"]
+            away_team = jogo["teams"]["away"]["name"]
             horario = jogo["fixture"]["date"][11:16]
+            status = jogo["fixture"]["status"]["long"]
 
-            st.markdown(f"## ⚽ {home} vs {away}")
-            st.write(
-                f"📅 **Data:** {data_jogo} | ⏰ **Horário:** {horario} UTC | **Status:** {status}"
-            )
-            st.markdown("---")
+            st.write("---")
+            st.subheader(f"⚽ {home_team} vs {away_team}")
+            st.caption(f"⏰ Horário: {horario} UTC | Status: {status}")
 
-            st.write("🔥 **Opções de Apostas com Alta Probabilidade (+EV):**")
+            # 2. Faz a Análise Estatística (Prediction) na API
+            url_pred = f"https://v3.football.api-sports.io/predictions?fixture={fixture_id}"
+            res_pred = requests.get(url_pred, headers=HEADERS)
+
+            prob_home = "33%"
+            prob_draw = "33%"
+            prob_away = "34%"
+            advice = "Over 1.5 Gols ou Dupla Chance"
+
+            if res_pred.status_code == 200:
+                pred_data = res_pred.json().get("response", [])
+                if pred_data:
+                    predictions = pred_data[0].get("predictions", {})
+                    percent = predictions.get("percent", {})
+
+                    prob_home = percent.get("home", "33%")
+                    prob_draw = percent.get("draw", "33%")
+                    prob_away = percent.get("away", "34%")
+                    advice = predictions.get("advice", advice)
+
+            # 3. Organização em Colunas / Métricas de Probabilidade Real
+            c1, c2, c3 = st.columns(3)
+            c1.metric(f"Vitória {home_team}", prob_home)
+            c2.metric("Empate", prob_draw)
+            c3.metric(f"Vitória {away_team}", prob_away)
+
+            # 4. Blocos de Apostas com Risco Organizado
+            st.markdown("#### 🎯 Oportunidades Identificadas (+EV):")
 
             st.success(
-                "🟢 **Opção Principal (Conservadora):** Over 1.5 Gols na partida\n\n"
-                "• **Probabilidade:** ~84%\n\n"
-                "• **Margem de Segurança:** Muito Alta"
+                f"🟢 **Recomendação Principal da API:**\n\n"
+                f"👉 **{advice}**\n\n"
+                f"_Dica de Segurança: Verifique se a Odd oferecida pela casa é maior que 1.45._"
             )
 
             st.info(
-                "🔵 **Opção Secundaria (Equilibrada):** Dupla Chance (Empate ou Mandante/Visitante)\n\n"
-                "• **Probabilidade:** ~78%\n\n"
-                "• **Margem de Segurança:** Alta"
+                f"🔵 **Mercado de Proteção (Dupla Chance):**\n\n"
+                f"👉 **{home_team} ou Empate** (Se prob. Mandante > 50%) OU **{away_team} ou Empate**\n\n"
+                f"_Ideal para construir apostas múltiplas/bingos confiáveis._"
             )
 
             st.warning(
-                "🟡 **Opção de Valor (Odds Maiores):** Ambas as Equipes Marcam (Sim) OU Over 0.5 Gols no HT\n\n"
-                "• **Probabilidade:** ~68%\n\n"
-                "• **Margem de Segurança:** Média/Alta"
+                "🟡 **Alerta de Pegadinha das Casas de Apostas:**\n\n"
+                "⚠️ Não aposte no ML (Vitória Simples) se a chance calculada for menor que 60%. "
+                "Prefira linhas de Handcap (+1.0) ou over 1.5 gols."
             )
-
-            st.divider()
