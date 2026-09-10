@@ -182,6 +182,8 @@ if st.session_state.jogo_selecionado is None:
         data_selecionada = st.date_input("Data:", datetime.date.today())
 
     data_str = data_selecionada.strftime("%Y-%m-%d")
+    
+    # Busca principal por data e fuso ajustado
     url_fixtures = f"https://v3.football.api-sports.io/fixtures?date={data_str}&timezone=America/Sao_Paulo"
     res_fixtures = requests.get(url_fixtures, headers=HEADERS)
 
@@ -191,6 +193,13 @@ if st.session_state.jogo_selecionado is None:
         dados_jogos = [
             j for j in bruto if j.get("league", {}).get("id") == liga_id
         ]
+
+    # Se a busca por data estrita não trouxer resultados, busca os próximos jogos da liga
+    if not dados_jogos:
+        url_liga_fallback = f"https://v3.football.api-sports.io/fixtures?league={liga_id}&season=2026&next=15&timezone=America/Sao_Paulo"
+        res_liga = requests.get(url_liga_fallback, headers=HEADERS)
+        if res_liga.status_code == 200:
+            dados_jogos = res_liga.json().get("response", [])
 
     st.write("---")
     st.subheader("📋 Jogos Encontrados")
@@ -203,9 +212,10 @@ if st.session_state.jogo_selecionado is None:
             away_team = jogo["teams"]["away"]["name"]
             horario = jogo["fixture"]["date"][11:16]
             status = jogo["fixture"]["status"]["short"]
+            data_jogo = jogo["fixture"]["date"][:10]
 
-            label_botao = f"⚽ {horario} | {home_team} vs {away_team} ({status})"
-            if st.button(label_botao, key=jogo["fixture"]["id"]):
+            label_botao = f"⚽ [{data_jogo}] {horario} | {home_team} vs {away_team} ({status})"
+            if st.button(label_botao, key=str(jogo["fixture"]["id"])):
                 st.session_state.jogo_selecionado = jogo
                 st.rerun()
 
