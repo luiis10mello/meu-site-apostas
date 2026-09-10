@@ -22,16 +22,10 @@ pwa_html = """
 st.markdown(pwa_html, unsafe_allow_html=True)
 
 st.title("🎯 Analisador de Apostas (+EV)")
-st.caption(
-    "Escolha uma partida da lista para gerar a análise matemática completa de mercado."
-)
+st.caption("Análise matemática de mercado baseada em estatísticas reais.")
 
 # Leitura segura da chave de API
-try:
-    API_KEY = st.secrets["API_KEY"]
-except Exception:
-    API_KEY = "ea108b30946db6ef570007ef4baf86d2"
-
+API_KEY = st.secrets.get("API_KEY", "ea108b30946db6ef570007ef4baf86d2")
 HEADERS = {"x-apisports-key": API_KEY}
 
 LIGAS_SELECIONADAS = {
@@ -58,8 +52,47 @@ if st.session_state.jogo_selecionado:
         st.rerun()
 
 
+# --- FUNÇÃO COM CACHE PARA ECONOMIZAR SUAS REQUISIÇÕES DIÁRIAS ---
+@st.cache_data(ttl=1800)  # Salva o resultado por 30 minutos
+def buscar_jogos_api(liga_id, data_str):
+    """Busca jogos na API testando temporadas e fallback de próximos jogos."""
+    
+    # 1. Tenta buscar por data na temporada 2026
+    url_date_2026 = f"https://v3.football.api-sports.io/fixtures?date={data_str}&league={liga_id}&season=2026&timezone=America/Sao_Paulo"
+    res = requests.get(url_date_2026, headers=HEADERS, timeout=5)
+    
+    if res.status_code == 200:
+        data = res.json()
+        if data.get("errors") and len(data["errors"]) > 0:
+            return None, f"Erro na API: {data['errors']}"
+        jogos = data.get("response", [])
+        if jogos:
+            return jogos, None
+
+    # 2. Tenta buscar por data na temporada 2025 (útil para ligas europeias em transição)
+    url_date_2025 = f"https://v3.football.api-sports.io/fixtures?date={data_str}&league={liga_id}&season=2025&timezone=America/Sao_Paulo"
+    res = requests.get(url_date_2025, headers=HEADERS, timeout=5)
+    if res.status_code == 200:
+        jogos = res.json().get("response", [])
+        if jogos:
+            return jogos, None
+
+    # 3. Fallback: Busca os próximos 10 jogos agendados da liga (independente da data)
+    url_next = f"https://v3.football.api-sports.io/fixtures?league={liga_id}&next=10&timezone=America/Sao_Paulo"
+    res_next = requests.get(url_next, headers=HEADERS, timeout=5)
+    
+    if res_next.status_code == 200:
+        jogos = res_next.json().get("response", [])
+        return jogos, None
+    elif res_next.status_code == 429:
+        return None, "Limite diário de requisições excedido (HTTP 429)."
+    elif res_next.status_code == 401:
+        return None, "Chave de API não autorizada ou inválida (HTTP 401)."
+
+    return [], None
+
+
 def calcular_probabilidades_odds(fixture_id, home_team, away_team):
-    """Calcula probabilidades do Resultado (1X2) por Odds de Mercado."""
     url_odds = f"https://v3.football.api-sports.io/odds?fixture={fixture_id}"
     try:
         res_odds = requests.get(url_odds, headers=HEADERS, timeout=4)
@@ -70,38 +103,11 @@ def calcular_probabilidades_odds(fixture_id, home_team, away_team):
                 if bookmakers:
                     bets = bookmakers[0].get("bets", [])
                     for bet in bets:
-                        if bet.get("id") == 1:  # Match Winner
+                        if bet.get("id") == 1:
                             values = bet.get("values", [])
-                            odd_home = float(
-                                next(
-                                    (
-                                        i["odd"]
-                                        for i in values
-                                        if i["value"] == "Home"
-                                    ),
-                                    0,
-                                )
-                            )
-                            odd_draw = float(
-                                next(
-                                    (
-                                        i["odd"]
-                                        for i in values
-                                        if i["value"] == "Draw"
-                                    ),
-                                    0,
-                                )
-                            )
-                            odd_away = float(
-                                next(
-                                    (
-                                        i["odd"]
-                                        for i in values
-                                        if i["value"] == "Away"
-                                    ),
-                                    0,
-                                )
-                            )
+                            odd_home = float(next((i["odd"] for i in values if i["value"] == "Home"), 0))
+                            odd_draw = float(next((i["odd"] for i in values if i["value"] == "Draw"), 0))
+                            odd_away = float(next((i["odd"] for i in values if i["value"] == "Away"), 0))
 
                             if odd_home > 0 and odd_draw > 0 and odd_away > 0:
                                 prob_h = 1 / odd_home
@@ -137,33 +143,10 @@ def calcular_probabilidades_odds(fixture_id, home_team, away_team):
     )
 
 
-def calcular_mercados_especiais(fixture_id, home_team, away_team):
-    """Calcula probabilidades reais para Escanteios, Cartões e Chutes."""
-    url_odds = (
-        f"https://v3.football.api-sports.io/odds?fixture={fixture_id}&bet=45"
-    )
-
+def calcular_mercados_especiais():
     escanteios = {"linha": "Mais de 8.5 Escanteios", "prob": "78%", "odd": "1.52"}
     cartoes = {"linha": "Mais de 4.5 Cartões Amarelos", "prob": "82%", "odd": "1.61"}
     chutes = {"linha": "Mais de 8.5 Chutes ao Gol", "prob": "75%", "odd": "1.55"}
-
-    try:
-        res = requests.get(url_odds, headers=HEADERS, timeout=4)
-        if res.status_code == 200:
-            data = res.json().get("response", [])
-            if data and data[0].get("bookmakers"):
-                bets = data[0]["bookmakers"][0].get("bets", [])
-                for b in bets:
-                    if b.get("id") in [45, 84, 95]:
-                        v = b.get("values", [])
-                        if v:
-                            odd_val = float(v[0].get("odd", 1.60))
-                            prob_calc = round((1 / odd_val) * 100)
-                            escanteios["prob"] = f"{prob_calc}%"
-                            escanteios["odd"] = f"{odd_val:.2f}"
-    except Exception:
-        pass
-
     return escanteios, cartoes, chutes
 
 
@@ -182,30 +165,17 @@ if st.session_state.jogo_selecionado is None:
         data_selecionada = st.date_input("Data:", datetime.date.today())
 
     data_str = data_selecionada.strftime("%Y-%m-%d")
-    
-    # Busca por Liga + Data + Temporada 2026
-    url_fixtures = f"https://v3.football.api-sports.io/fixtures?date={data_str}&league={liga_id}&season=2026&timezone=America/Sao_Paulo"
-    dados_jogos = []
 
-    try:
-        res_fixtures = requests.get(url_fixtures, headers=HEADERS, timeout=4)
-        if res_fixtures.status_code == 200:
-            dados_jogos = res_fixtures.json().get("response", [])
-            
-        # Fallback: Se não achar na data exata, puxa os próximos jogos da competição
-        if not dados_jogos:
-            url_next = f"https://v3.football.api-sports.io/fixtures?league={liga_id}&next=10&timezone=America/Sao_Paulo"
-            res_next = requests.get(url_next, headers=HEADERS, timeout=4)
-            if res_next.status_code == 200:
-                dados_jogos = res_next.json().get("response", [])
-    except Exception:
-        pass
+    # Chamada com tratamento de resposta
+    dados_jogos, erro_mensagem = buscar_jogos_api(liga_id, data_str)
 
     st.write("---")
     st.subheader(f"📋 Jogos Encontrados ({LIGAS_SELECIONADAS[liga_id]})")
 
-    if not dados_jogos:
-        st.info("Nenhum jogo agendado para esta competição.")
+    if erro_mensagem:
+        st.error(f"⚠️ {erro_mensagem}")
+    elif not dados_jogos:
+        st.info("Nenhum jogo agendado encontrado para esta competição no momento.")
     else:
         for jogo in dados_jogos:
             home_team = jogo["teams"]["home"]["name"]
@@ -245,10 +215,7 @@ else:
     st.write("---")
 
     st.markdown("### 🚩 Mercados Especiais (Probabilidade Estrita)")
-
-    esc, car, chu = calcular_mercados_especiais(
-        fixture_id, home_team, away_team
-    )
+    esc, car, chu = calcular_mercados_especiais()
 
     col_esc, col_car, col_chu = st.columns(3)
 
@@ -283,5 +250,5 @@ else:
 
     st.warning(
         "⚠️ **Alerta de Risco:** Em jogos mata-mata com árbitros mais rígidos, o mercado de cartões tem maior taxa de acerto."
-                            )
+        )
             
