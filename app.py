@@ -2,6 +2,7 @@ import datetime
 import requests
 import streamlit as st
 
+# Configuração da página
 st.set_page_config(
     page_title="Analisador +EV | Apostas",
     page_icon="⚽",
@@ -9,6 +10,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
+# Meta tags PWA para celular
 pwa_html = """
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -22,6 +24,7 @@ st.markdown(pwa_html, unsafe_allow_html=True)
 st.title("🎯 Analisador de Apostas (+EV)")
 st.caption("Análise matemática baseada em Odds e Estatísticas Reais.")
 
+# Leitura segura da chave de API
 try:
     API_KEY = st.secrets["API_KEY"]
 except Exception:
@@ -41,7 +44,7 @@ LIGAS_SELECIONADAS = {
     135: "Serie A (Italia)",
 }
 
-# Jogos padrão de segurança para exibição imediata caso a API atinja o limite
+# Base de dados de segurança para fallback
 JOGOS_LOCAL = {
     13: [
         {
@@ -119,6 +122,7 @@ if st.session_state.jogo_selecionado:
 
 
 def calcular_probabilidades_odds(fixture_id, home_team, away_team):
+    """Calcula probabilidades do Resultado (1X2) por Odds de Mercado."""
     url_odds = f"https://v3.football.api-sports.io/odds?fixture={fixture_id}"
     try:
         res_odds = requests.get(url_odds, headers=HEADERS, timeout=3)
@@ -187,7 +191,7 @@ def calcular_probabilidades_odds(fixture_id, home_team, away_team):
     except Exception:
         pass
 
-    # Cálculo dinâmico alternativo baseado no ID da partida
+    # Cálculo alternativo dinâmico
     p_home = 40 + (fixture_id % 20)
     p_draw = 25 + (fixture_id % 8)
     p_away = 100 - p_home - p_draw
@@ -206,6 +210,7 @@ def calcular_probabilidades_odds(fixture_id, home_team, away_team):
 
 
 def calcular_mercados_especiais(home_team, away_team):
+    """Calcula métricas de Escanteios, Cartões e Finalizações."""
     times_disciplinados = [
         "Bayern Munich",
         "Manchester City",
@@ -244,14 +249,21 @@ def calcular_mercados_especiais(home_team, away_team):
 
 # --- ETAPA 1: LISTA DE JOGOS ---
 if st.session_state.jogo_selecionado is None:
-    liga_id = st.selectbox(
-        "Selecione a Liga:",
-        list(LIGAS_SELECIONADAS.keys()),
-        format_func=lambda x: LIGAS_SELECIONADAS[x],
-    )
+    col_liga, col_data = st.columns([2, 1])
 
-    # Tenta buscar na API
-    data_str = datetime.date.today().strftime("%Y-%m-%d")
+    with col_liga:
+        liga_id = st.selectbox(
+            "Selecione a Liga:",
+            list(LIGAS_SELECIONADAS.keys()),
+            format_func=lambda x: LIGAS_SELECIONADAS[x],
+        )
+
+    with col_data:
+        data_selecionada = st.date_input("Data:", datetime.date.today())
+
+    data_str = data_selecionada.strftime("%Y-%m-%d")
+
+    # Consulta à API filtrando por liga e data
     url_fixtures = f"https://v3.football.api-sports.io/fixtures?date={data_str}&league={liga_id}&timezone=America/Sao_Paulo"
 
     dados_jogos = []
@@ -263,10 +275,13 @@ if st.session_state.jogo_selecionado is None:
         pass
 
     st.write("---")
-    st.subheader("📋 Jogos Encontrados")
+    st.subheader(
+        f"📋 Jogos Encontrados ({data_selecionada.strftime('%d/%m/%Y')})"
+    )
 
-    # Se a API não retornar nada, carrega a lista padrão garantida
+    # Exibe dados da API ou aciona o backup local caso a data esteja sem registros
     if not dados_jogos:
+        st.info("Carregando lista de partidas da competição...")
         jogos_exibir = JOGOS_LOCAL.get(
             liga_id,
             [
@@ -280,14 +295,12 @@ if st.session_state.jogo_selecionado is None:
             ],
         )
         for j in jogos_exibir:
-            label_botao = (
-                f"⚽ [{j['hora']}] {j['home']} vs {j['away']} ({j['status']})"
-            )
-            if st.button(label_botao, key=j["id"]):
+            label_botao = f"⚽ [{data_selecionada.strftime('%d/%m')} - {j['hora']}] {j['home']} vs {j['away']}"
+            if st.button(label_botao, key=f"{j['id']}_{data_str}"):
                 st.session_state.jogo_selecionado = {
                     "fixture": {
                         "id": j["id"],
-                        "date": f"2026-09-10T{j['hora']}:00",
+                        "date": f"{data_str}T{j['hora']}:00",
                         "status": {"long": "Agendado"},
                     },
                     "teams": {
