@@ -30,7 +30,7 @@ st.caption(
 try:
     API_KEY = st.secrets["API_KEY"]
 except Exception:
-    API_KEY = "9fa716f88fd2bbab00c313779ac49244"
+    API_KEY = "ea108b30946db6ef570007ef4baf86d2"
 
 HEADERS = {"x-apisports-key": API_KEY}
 
