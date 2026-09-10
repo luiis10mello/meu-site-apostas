@@ -26,8 +26,12 @@ st.caption(
     "Análise matemática baseada no retrospecto e dados estatísticos da API-Sports."
 )
 
-# Chave direta para garantir o funcionamento imediato do app
-API_KEY = st.secrets["API_KEY"]
+# Sistema à prova de falhas para a Chave
+try:
+    API_KEY = st.secrets["API_KEY"]
+except Exception:
+    API_KEY = "9fa716f88fd2bbab00c313779ac49244"
+
 HEADERS = {"x-apisports-key": API_KEY}
 
 LIGAS_SELECIONADAS = {
@@ -116,13 +120,11 @@ if st.button("🚀 Gerar Análise & Bilhete Pronto", use_container_width=True):
                     prob_away = percent.get("away", "34%")
                     advice = predictions.get("advice", advice)
 
-            # Métricas
             c1, c2, c3 = st.columns(3)
             c1.metric(f"Vitória {home_team}", prob_home)
             c2.metric("Empate", prob_draw)
             c3.metric(f"Vitória {away_team}", prob_away)
 
-            # Veredito
             st.markdown("### 💡 Veredito do Analista")
             st.info(
                 f"🗣️ **Se eu fosse você, eu apostaria neste jogo da seguinte forma:**\n\n"
@@ -131,7 +133,6 @@ if st.button("🚀 Gerar Análise & Bilhete Pronto", use_container_width=True):
                 f"de **Segurança de Resultado + Média de Gols**."
             )
 
-            # Bilhete Pronto
             st.markdown("### 🎟️ Bilhete Pronto (Criar Aposta)")
 
             st.success(
