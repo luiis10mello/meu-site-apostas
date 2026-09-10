@@ -131,4 +131,3 @@ else:
     st.warning(
         "⚠️ **Alerta de Risco:** Não faça entradas em 'Ambas Marcam' caso o time visitante jogue muito recuado fora de casa."
     )
-    
