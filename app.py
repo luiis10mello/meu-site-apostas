@@ -53,7 +53,7 @@ if "jogo_selecionado" not in st.session_state:
 st.write("---")
 
 if st.session_state.jogo_selecionado:
-    if st.button("⬅️ Voltar para a Seleção de Partidas"):
+    if st.button("⬅️ Voltar para a Lista de Jogos"):
         st.session_state.jogo_selecionado = None
         st.rerun()
 
@@ -144,60 +144,54 @@ def calcular_mercados_especiais(home_team, away_team):
     return escanteios, gols, cartoes
 
 
-# --- ETAPA 1: LISTA DE JOGOS E BOTÃO DE GERAÇÃO ---
+# --- ETAPA 1: LISTA DE JOGOS DIRETOS ---
 if st.session_state.jogo_selecionado is None:
-    liga_id = st.selectbox(
-        "Selecione a Liga:",
-        list(LIGAS_SELECIONADAS.keys()),
-        format_func=lambda x: LIGAS_SELECIONADAS[x],
-    )
+    col_liga, col_data = st.columns([2, 1])
 
-    data_selecionada = st.date_input("Data:", datetime.date.today())
+    with col_liga:
+        liga_id = st.selectbox(
+            "Selecione a Liga:",
+            list(LIGAS_SELECIONADAS.keys()),
+            format_func=lambda x: LIGAS_SELECIONADAS[x],
+        )
+
+    with col_data:
+        data_selecionada = st.date_input("Data:", datetime.date.today())
+
     data_str = data_selecionada.strftime("%Y-%m-%d")
 
-    st.write("")
+    # Busca limpa e direta na API pelo dia selecionado
+    url_fixtures = f"https://v3.football.api-sports.io/fixtures?date={data_str}&timezone=America/Sao_Paulo"
     
-    gerar_clicado = st.button("🚀 Gerar Análise & Bilhete Pronto", use_container_width=True)
+    dados_jogos = []
+    try:
+        res = requests.get(url_fixtures, headers=HEADERS, timeout=5)
+        if res.status_code == 200:
+            bruto = res.json().get("response", [])
+            dados_jogos = [
+                j for j in bruto if j.get("league", {}).get("id") == liga_id
+            ]
+    except Exception:
+        dados_jogos = []
 
-    if gerar_clicado:
-        url_fixtures = f"https://v3.football.api-sports.io/fixtures?date={data_str}&timezone=America/Sao_Paulo"
-        try:
-            res = requests.get(url_fixtures, headers=HEADERS, timeout=5)
-            if res.status_code == 200:
-                bruto = res.json().get("response", [])
-                st.session_state.dados_jogos = [
-                    j for j in bruto if j.get("league", {}).get("id") == liga_id
-                ]
-            else:
-                st.session_state.dados_jogos = []
-        except Exception:
-            st.session_state.dados_jogos = []
+    st.write("---")
+    st.subheader(f"📋 Partidas Disponíveis ({LIGAS_SELECIONADAS[liga_id]})")
 
-        st.session_state.liga_nome_atual = LIGAS_SELECIONADAS[liga_id]
-        st.session_state.busca_executada = True
+    if not dados_jogos:
+        st.info("Nenhum jogo agendado para esta competição na data escolhida.")
+    else:
+        for jogo in dados_jogos:
+            home_team = jogo["teams"]["home"]["name"]
+            away_team = jogo["teams"]["away"]["name"]
+            horario = jogo["fixture"]["date"][11:16]
+            status = jogo["fixture"]["status"]["short"]
 
-    if "busca_executada" in st.session_state and st.session_state.busca_executada:
-        st.write("---")
-        st.subheader(f"📋 Partidas Disponíveis ({st.session_state.get('liga_nome_atual', '')})")
+            label_botao = f"⚽ {horario} | {home_team} vs {away_team} ({status})"
+            if st.button(label_botao, key=str(jogo["fixture"]["id"])):
+                st.session_state.jogo_selecionado = jogo
+                st.rerun()
 
-        dados_jogos = st.session_state.get("dados_jogos", [])
-
-        if not dados_jogos:
-            st.info("Nenhum jogo encontrado para esta competição na data escolhida.")
-        else:
-            for jogo in dados_jogos:
-                home_team = jogo["teams"]["home"]["name"]
-                away_team = jogo["teams"]["away"]["name"]
-                data_jogo = jogo["fixture"]["date"][:10]
-                horario = jogo["fixture"]["date"][11:16]
-                status = jogo["fixture"]["status"]["short"]
-
-                label_botao = f"⚽ [{data_jogo}] {horario} | {home_team} vs {away_team} ({status})"
-                if st.button(label_botao, key=f"jogo_{jogo['fixture']['id']}"):
-                    st.session_state.jogo_selecionado = jogo
-                    st.rerun()
-
-# --- ETAPA 2: TELA DE ANÁLISE COMPLETA (EXATAMENTE COMO NO SEU PRINT) ---
+# --- ETAPA 2: TELA DE ANÁLISE COMPLETA ---
 else:
     jogo = st.session_state.jogo_selecionado
     fixture_id = jogo["fixture"]["id"]
@@ -207,7 +201,7 @@ else:
     status = jogo["fixture"]["status"]["long"] if "long" in jogo["fixture"]["status"] else "Pré-Jogo"
 
     st.subheader(f"⚽ {home_team} vs {away_team}")
-    st.caption(f"Horário: {horario} UTC | Status: {status}")
+    st.caption(f"Horário: {horario} (Brasília) | Status: {status}")
 
     prob_home, prob_draw, prob_away, advice, fonte = (
         calcular_probabilidades_odds(fixture_id, home_team, away_team)
@@ -241,7 +235,6 @@ else:
 
     st.write("---")
 
-    # Veredito detalhado exatamente igual ao print que você gostou
     st.markdown("### 💡 Veredito do Analista")
     st.info(
         f"🗣️ **Se eu fosse você, eu apostaria neste jogo da seguinte forma:**\n\n"
@@ -249,7 +242,6 @@ else:
         f"Evite investir em Vitória Direta (ML). A melhor escolha de alta probabilidade é investir na combinação de Segurança de Resultado + Média de Gols."
     )
 
-    # Bilhete Pronto com o formato exato dos seus prints anteriores
     st.markdown("### 🎟️ Bilhete Pronto (Criar Aposta)")
     st.success(
         f"📌 **SUGESTÃO DE APOSTA MONTADA (+EV)**\n\n"
