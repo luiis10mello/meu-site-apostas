@@ -52,37 +52,27 @@ if st.session_state.jogo_selecionado:
         st.rerun()
 
 
-# --- BUSCA OTIMIZADA COMPATÍVEL COM PLANO GRATUITO ---
+# --- BUSCA GLOBAL POR DATA (DESVIA DA TRAVA DE TEMPORADA DO PLANO FREE) ---
 @st.cache_data(ttl=1800)
 def buscar_jogos_api(liga_id, data_str):
-    # 1. Busca os próximos jogos da liga sem forçar a temporada (Compatível com Plano Free)
-    url_next = f"https://v3.football.api-sports.io/fixtures?league={liga_id}&next=10&timezone=America/Sao_Paulo"
-    try:
-        res = requests.get(url_next, headers=HEADERS, timeout=5)
-        if res.status_code == 200:
-            data = res.json()
-            if data.get("errors") and len(data["errors"]) > 0:
-                # Se ainda houver restrição de plano para a liga selecionada
-                return None, "Esta liga possui restrição de temporada no plano Free da API."
-            
-            jogos = data.get("response", [])
-            if jogos:
-                return jogos, None
-    except Exception:
-        pass
-
-    # 2. Busca genérica por data sem especificar 'season' na requisição
     url_date = f"https://v3.football.api-sports.io/fixtures?date={data_str}&timezone=America/Sao_Paulo"
     try:
-        res_date = requests.get(url_date, headers=HEADERS, timeout=5)
-        if res_date.status_code == 200:
-            bruto = res_date.json().get("response", [])
+        res = requests.get(url_date, headers=HEADERS, timeout=5)
+        if res.status_code == 200:
+            bruto = res.json().get("response", [])
             jogos_filtrados = [j for j in bruto if j.get("league", {}).get("id") == liga_id]
-            return jogos_filtrados, None
+            if jogos_filtrados:
+                return jogos_filtrados, None
+            else:
+                return [], "Nenhum jogo agendado para esta competição na data selecionada."
+        elif res.status_code == 429:
+            return None, "Limite diário de requisições excedido (HTTP 429)."
+        elif res.status_code == 401:
+            return None, "Chave de API não autorizada (HTTP 401)."
     except Exception:
         pass
 
-    return [], None
+    return [], "Não foi possível carregar os dados no momento."
 
 
 def calcular_probabilidades_odds(fixture_id, home_team, away_team):
@@ -164,10 +154,10 @@ if st.session_state.jogo_selecionado is None:
     st.write("---")
     st.subheader(f"📋 Jogos Encontrados ({LIGAS_SELECIONADAS[liga_id]})")
 
-    if erro_mensagem:
-        st.warning(f"⚠️ {erro_mensagem}")
+    if erro_mensagem and not dados_jogos:
+        st.info(erro_mensagem)
     elif not dados_jogos:
-        st.info("Nenhum jogo agendado encontrado para esta competição no momento.")
+        st.info("Nenhum jogo agendado encontrado para esta competição na data selecionada.")
     else:
         for jogo in dados_jogos:
             home_team = jogo["teams"]["home"]["name"]
@@ -242,4 +232,5 @@ else:
 
     st.warning(
         "⚠️ **Alerta de Risco:** Em jogos mata-mata com árbitros mais rígidos, o mercado de cartões tem maior taxa de acerto."
-)
+                        )
+    
