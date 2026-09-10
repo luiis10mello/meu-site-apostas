@@ -139,9 +139,6 @@ def calcular_probabilidades_odds(fixture_id, home_team, away_team):
 
 def calcular_mercados_especiais(fixture_id, home_team, away_team):
     """Calcula probabilidades reais para Escanteios, Cartões e Finalizações Totais."""
-    url_odds = f"https://v3.football.api-sports.io/odds?fixture={fixture_id}"
-
-    # Regra para evitar distorções em times limpos (ex: Bayern de Munique)
     times_disciplinados = [
         "Bayern Munich",
         "Manchester City",
@@ -175,23 +172,6 @@ def calcular_mercados_especiais(fixture_id, home_team, away_team):
         "odd": "1.53",
     }
 
-    try:
-        res = requests.get(url_odds, headers=HEADERS, timeout=4)
-        if res.status_code == 200:
-            data = res.json().get("response", [])
-            if data and data[0].get("bookmakers"):
-                bets = data[0]["bookmakers"][0].get("bets", [])
-                for b in bets:
-                    if b.get("id") in [45, 84, 95]:
-                        v = b.get("values", [])
-                        if v:
-                            odd_val = float(v[0].get("odd", 1.55))
-                            prob_calc = round((1 / odd_val) * 100)
-                            escanteios["prob"] = f"{prob_calc}%"
-                            escanteios["odd"] = f"{odd_val:.2f}"
-    except Exception:
-        pass
-
     return escanteios, cartoes, finalizacoes
 
 
@@ -211,7 +191,7 @@ if st.session_state.jogo_selecionado is None:
 
     data_str = data_selecionada.strftime("%Y-%m-%d")
 
-    # Busca otimizada com liga e data juntas na URL para não dar timeout
+    # Busca otimizada para evitar estouro da API
     url_fixtures = f"https://v3.football.api-sports.io/fixtures?date={data_str}&league={liga_id}&timezone=America/Sao_Paulo"
     res_fixtures = requests.get(url_fixtures, headers=HEADERS)
 
@@ -219,7 +199,7 @@ if st.session_state.jogo_selecionado is None:
     if res_fixtures.status_code == 200:
         dados_jogos = res_fixtures.json().get("response", [])
 
-    # Se a data não tiver partidas da copa, busca as próximas agendadas automaticamente
+    # Se a data não tiver jogos, puxa as próximas partidas agendadas da liga escolhida
     if not dados_jogos:
         url_next = f"https://v3.football.api-sports.io/fixtures?league={liga_id}&next=10&timezone=America/Sao_Paulo"
         res_next = requests.get(url_next, headers=HEADERS)
@@ -244,7 +224,7 @@ if st.session_state.jogo_selecionado is None:
                 st.session_state.jogo_selecionado = jogo
                 st.rerun()
 
-# --- ETAPA 2: TELA DE ANÁLISE COMPLETA ---
+# --- ETAPA 2: TELA DE ANÁLISE COMPLETA (ODDS + MERCADOS ESPECIAIS) ---
 else:
     jogo = st.session_state.jogo_selecionado
     fixture_id = jogo["fixture"]["id"]
@@ -270,7 +250,7 @@ else:
 
     st.write("---")
 
-    # 2. Mercados Especiais Separados (Escanteios, Cartões Amarelos e Finalizações)
+    # 2. Mercados Especiais Separados (Escanteios, Cartões e Finalizações Totais)
     st.markdown("### 🎯 Mercados Especiais (Probabilidade Estrita)")
 
     esc, car, fin = calcular_mercados_especiais(
