@@ -7,7 +7,6 @@ st.set_page_config(page_title="Analisador de Apostas", layout="centered")
 st.title("🎯 Melhores Odds (Alta Probabilidade)")
 
 API_KEY = "9fa716f88fd2bbab00c313779ac49244"
-
 HEADERS = {"x-apisports-key": API_KEY}
 
 LIGAS_SELECIONADAS = {
@@ -36,26 +35,33 @@ data_selecionada = st.date_input("Data do Jogo:", datetime.date.today())
 if st.button("Buscar Oportunidades"):
     data_str = data_selecionada.strftime("%Y-%m-%d")
 
-    # 1. Tenta buscar diretamente pela data selecionada sem travar a temporada
-    url_date = f"https://v3.football.api-sports.io/fixtures?league={liga_id}&date={data_str}"
+    # Busca genérica por data no feed global e filtra no lado do Python
+    url_date = f"https://v3.football.api-sports.io/fixtures?date={data_str}"
     response = requests.get(url_date, headers=HEADERS)
-    dados = []
+    dados_brutos = []
 
     if response.status_code == 200:
-        dados = response.json().get("response", [])
+        dados_brutos = response.json().get("response", [])
 
-    # 2. Se não encontrar jogos na data exata, busca os próximos jogos agendados
-    if not dados:
-        url_next = f"https://v3.football.api-sports.io/fixtures?league={liga_id}&next=10"
-        response_next = requests.get(url_next, headers=HEADERS)
-        if response_next.status_code == 200:
-            dados = response_next.json().get("response", [])
+    # Filtra os jogos apenas da liga selecionada
+    dados = [
+        j for j in dados_brutos if j.get("league", {}).get("id") == liga_id
+    ]
 
-    # 3. Exibe os resultados na tela
+    # Fallback: se não achar na data, tenta buscar ao vivo (live)
     if not dados:
-        st.info(
-            "Nenhum jogo próximo ou na data selecionada foi encontrado para esta competição."
-        )
+        url_live = "https://v3.football.api-sports.io/fixtures?live=all"
+        res_live = requests.get(url_live, headers=HEADERS)
+        if res_live.status_code == 200:
+            dados_live = res_live.json().get("response", [])
+            dados = [
+                j
+                for j in dados_live
+                if j.get("league", {}).get("id") == liga_id
+            ]
+
+    if not dados:
+        st.info("Nenhum jogo encontrado para esta competição na API nesta data.")
     else:
         for jogo in dados:
             home = jogo["teams"]["home"]["name"]
