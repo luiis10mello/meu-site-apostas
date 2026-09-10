@@ -2,7 +2,6 @@ import datetime
 import requests
 import streamlit as st
 
-# Configuração da página
 st.set_page_config(
     page_title="Analisador +EV | Apostas",
     page_icon="⚽",
@@ -24,7 +23,6 @@ st.markdown(pwa_html, unsafe_allow_html=True)
 st.title("🎯 Analisador de Apostas (+EV)")
 st.caption("Análise matemática baseada em Odds e Estatísticas Reais.")
 
-# Leitura segura da chave de API
 try:
     API_KEY = st.secrets["API_KEY"]
 except Exception:
@@ -57,7 +55,6 @@ if st.session_state.jogo_selecionado:
 
 
 def calcular_probabilidades_odds(fixture_id, home_team, away_team):
-    """Calcula probabilidades do Resultado (1X2) por Odds de Mercado."""
     url_odds = f"https://v3.football.api-sports.io/odds?fixture={fixture_id}"
     try:
         res_odds = requests.get(url_odds, headers=HEADERS, timeout=4)
@@ -138,7 +135,6 @@ def calcular_probabilidades_odds(fixture_id, home_team, away_team):
 def calcular_mercados_especiais(
     fixture_id, league_id, home_id, away_id, home_team, away_team
 ):
-    """Calcula métricas de Escanteios, Cartões e Finalizações."""
     times_disciplinados = [
         "Bayern Munich",
         "Manchester City",
@@ -177,44 +173,36 @@ def calcular_mercados_especiais(
 
 # --- ETAPA 1: LISTA DE JOGOS ---
 if st.session_state.jogo_selecionado is None:
-    col_liga, col_data = st.columns([2, 1])
+    liga_id = st.selectbox(
+        "Selecione a Liga:",
+        list(LIGAS_SELECIONADAS.keys()),
+        format_func=lambda x: LIGAS_SELECIONADAS[x],
+    )
 
-    with col_liga:
-        liga_id = st.selectbox(
-            "Selecione a Liga:",
-            list(LIGAS_SELECIONADAS.keys()),
-            format_func=lambda x: LIGAS_SELECIONADAS[x],
-        )
-
-    with col_data:
-        data_selecionada = st.date_input("Data:", datetime.date.today())
-
-    data_str = data_selecionada.strftime("%Y-%m-%d")
-
-    # 1. Consulta Flexível pela Data Selecionada e Liga (Sem restrição de ano)
-    url_fixtures = f"https://v3.football.api-sports.io/fixtures?date={data_str}&league={liga_id}&timezone=America/Sao_Paulo"
+    # Busca abrangente por partidas da liga sem travar no dia exato
+    ano_atual = datetime.date.today().year
+    url_fixtures = f"https://v3.football.api-sports.io/fixtures?league={liga_id}&season={ano_atual}&timezone=America/Sao_Paulo"
     res_fixtures = requests.get(url_fixtures, headers=HEADERS)
 
     dados_jogos = []
     if res_fixtures.status_code == 200:
         dados_jogos = res_fixtures.json().get("response", [])
 
-    # 2. Se a data estiver sem partidas, busca automaticamente as próximas 10 partidas da liga
+    # Se a temporada do ano corrente não retornar dados, busca a temporada anterior
     if not dados_jogos:
-        url_next = f"https://v3.football.api-sports.io/fixtures?league={liga_id}&next=10&timezone=America/Sao_Paulo"
-        res_next = requests.get(url_next, headers=HEADERS)
-        if res_next.status_code == 200:
-            dados_jogos = res_next.json().get("response", [])
+        url_fallback = f"https://v3.football.api-sports.io/fixtures?league={liga_id}&season={ano_atual - 1}&timezone=America/Sao_Paulo"
+        res_fb = requests.get(url_fallback, headers=HEADERS)
+        if res_fb.status_code == 200:
+            dados_jogos = res_fb.json().get("response", [])
 
     st.write("---")
-    st.subheader("📋 Jogos Encontrados")
+    st.subheader("📋 Jogos Disponíveis")
 
     if not dados_jogos:
-        st.warning(
-            "Nenhum jogo encontrado para esta liga no calendário recente."
-        )
+        st.warning("Nenhum jogo encontrado para esta liga no momento.")
     else:
-        for jogo in dados_jogos:
+        # Exibe as partidas em formato de botões organizados
+        for jogo in dados_jogos[:15]:  # Exibe até 15 partidas da competição
             home_team = jogo["teams"]["home"]["name"]
             away_team = jogo["teams"]["away"]["name"]
             data_jogo = jogo["fixture"]["date"][:10]
@@ -242,7 +230,6 @@ else:
     st.subheader(f"⚽ {home_team} vs {away_team}")
     st.caption(f"Horário: {horario} (Brasília) | Status: {status}")
 
-    # 1. Probabilidades do Resultado (1X2)
     prob_home, prob_draw, prob_away, advice, fonte = (
         calcular_probabilidades_odds(fixture_id, home_team, away_team)
     )
@@ -256,7 +243,6 @@ else:
 
     st.write("---")
 
-    # 2. Mercados Especiais
     st.markdown("### 🎯 Mercados Especiais (Estatística Real)")
 
     esc, car, fin = calcular_mercados_especiais(
@@ -285,7 +271,6 @@ else:
 
     st.write("---")
 
-    # Veredito do Analista e Sugestão de Bilhete
     st.markdown("### 💡 Veredito do Analista")
     st.info(
         f"🗣️ **Recomendação Tática:**\n\n"
