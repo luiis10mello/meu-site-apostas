@@ -191,15 +191,15 @@ if st.session_state.jogo_selecionado is None:
 
     data_str = data_selecionada.strftime("%Y-%m-%d")
 
-    # Busca 1: Pela Data Selecionada
-    url_fixtures = f"https://v3.football.api-sports.io/fixtures?date={data_str}&league={liga_id}&season=2026&timezone=America/Sao_Paulo"
+    # 1. Consulta Flexível pela Data Selecionada e Liga (Sem restrição de ano)
+    url_fixtures = f"https://v3.football.api-sports.io/fixtures?date={data_str}&league={liga_id}&timezone=America/Sao_Paulo"
     res_fixtures = requests.get(url_fixtures, headers=HEADERS)
 
     dados_jogos = []
     if res_fixtures.status_code == 200:
         dados_jogos = res_fixtures.json().get("response", [])
 
-    # Busca 2: Backup para Próximos Jogos da Liga se a data escolhida estiver vazia
+    # 2. Se a data estiver sem partidas, busca automaticamente as próximas 10 partidas da liga
     if not dados_jogos:
         url_next = f"https://v3.football.api-sports.io/fixtures?league={liga_id}&next=10&timezone=America/Sao_Paulo"
         res_next = requests.get(url_next, headers=HEADERS)
@@ -210,7 +210,9 @@ if st.session_state.jogo_selecionado is None:
     st.subheader("📋 Jogos Encontrados")
 
     if not dados_jogos:
-        st.warning("Nenhum jogo recente ou próximo agendado para esta liga.")
+        st.warning(
+            "Nenhum jogo encontrado para esta liga no calendário recente."
+        )
     else:
         for jogo in dados_jogos:
             home_team = jogo["teams"]["home"]["name"]
