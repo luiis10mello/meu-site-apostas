@@ -207,7 +207,7 @@ def calcular_mercados_especiais(
     return escanteios, cartoes, finalizacoes
 
 
-# --- ETAPA 1: LISTA DE JOGOS (CORRIGIDA E OTIMIZADA) ---
+# --- ETAPA 1: LISTA DE JOGOS ---
 if st.session_state.jogo_selecionado is None:
     col_liga, col_data = st.columns([2, 1])
 
@@ -222,39 +222,29 @@ if st.session_state.jogo_selecionado is None:
         data_selecionada = st.date_input("Data:", datetime.date.today())
 
     data_str = data_selecionada.strftime("%Y-%m-%d")
+    url_fixtures = f"https://v3.football.api-sports.io/fixtures?date={data_str}&timezone=America/Sao_Paulo"
+    res_fixtures = requests.get(url_fixtures, headers=HEADERS)
 
-    # 1. Busca direta informando a liga e a data exata
-    url_fixtures = f"https://v3.football.api-sports.io/fixtures?date={data_str}&league={liga_id}&timezone=America/Sao_Paulo"
     dados_jogos = []
-
-    try:
-        res = requests.get(url_fixtures, headers=HEADERS, timeout=4)
-        if res.status_code == 200:
-            dados_jogos = res.json().get("response", [])
-
-        # 2. Se não retornar jogos no dia exato, puxa automaticamente os próximos jogos da liga
-        if not dados_jogos:
-            url_next = f"https://v3.football.api-sports.io/fixtures?league={liga_id}&next=10&timezone=America/Sao_Paulo"
-            res_next = requests.get(url_next, headers=HEADERS, timeout=4)
-            if res_next.status_code == 200:
-                dados_jogos = res_next.json().get("response", [])
-    except Exception:
-        pass
+    if res_fixtures.status_code == 200:
+        bruto = res_fixtures.json().get("response", [])
+        dados_jogos = [
+            j for j in bruto if j.get("league", {}).get("id") == liga_id
+        ]
 
     st.write("---")
-    st.subheader(f"📋 Jogos Encontrados ({LIGAS_SELECIONADAS[liga_id]})")
+    st.subheader("📋 Jogos Encontrados")
 
     if not dados_jogos:
-        st.info("Nenhum jogo agendado para esta competição.")
+        st.info("Nenhum jogo agendado para esta competição na data escolhida.")
     else:
         for jogo in dados_jogos:
             home_team = jogo["teams"]["home"]["name"]
             away_team = jogo["teams"]["away"]["name"]
-            data_jogo = jogo["fixture"]["date"][:10]
             horario = jogo["fixture"]["date"][11:16]
             status = jogo["fixture"]["status"]["short"]
 
-            label_botao = f"⚽ [{data_jogo}] {horario} | {home_team} vs {away_team} ({status})"
+            label_botao = f"⚽ {horario} | {home_team} vs {away_team} ({status})"
             if st.button(label_botao, key=jogo["fixture"]["id"]):
                 st.session_state.jogo_selecionado = jogo
                 st.rerun()
@@ -336,5 +326,5 @@ else:
 
     st.warning(
         "⚠️ **Alerta de Risco:** Verifique se há rotação no elenco titular antes de colocar suas entradas."
-    )
+                                )
     
