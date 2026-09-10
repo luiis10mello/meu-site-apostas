@@ -26,7 +26,7 @@ st.caption(
     "Análise matemática baseada no retrospecto e dados estatísticos da API-Sports."
 )
 
-# Sistema à prova de falhas para a Chave
+# Leitura segura da chave
 try:
     API_KEY = st.secrets["API_KEY"]
 except Exception:
@@ -64,7 +64,8 @@ with col_data:
 if st.button("🚀 Gerar Análise & Bilhete Pronto", use_container_width=True):
     data_str = data_selecionada.strftime("%Y-%m-%d")
 
-    url_fixtures = f"https://v3.football.api-sports.io/fixtures?date={data_str}"
+    # Busca estrita pela data selecionada com fuso horário do Brasil (America/Sao_Paulo)
+    url_fixtures = f"https://v3.football.api-sports.io/fixtures?date={data_str}&timezone=America/Sao_Paulo"
     res_fixtures = requests.get(url_fixtures, headers=HEADERS)
 
     dados_jogos = []
@@ -75,17 +76,6 @@ if st.button("🚀 Gerar Análise & Bilhete Pronto", use_container_width=True):
         ]
 
     if not dados_jogos:
-        url_live = "https://v3.football.api-sports.io/fixtures?live=all"
-        res_live = requests.get(url_live, headers=HEADERS)
-        if res_live.status_code == 200:
-            dados_live = res_live.json().get("response", [])
-            dados_jogos = [
-                j
-                for j in dados_live
-                if j.get("league", {}).get("id") == liga_id
-            ]
-
-    if not dados_jogos:
         st.warning(
             "Nenhum jogo encontrado para esta competição na data selecionada."
         )
@@ -94,12 +84,14 @@ if st.button("🚀 Gerar Análise & Bilhete Pronto", use_container_width=True):
             fixture_id = jogo["fixture"]["id"]
             home_team = jogo["teams"]["home"]["name"]
             away_team = jogo["teams"]["away"]["name"]
+
+            # Exibe o horário convertido para o fuso de Brasília
             horario = jogo["fixture"]["date"][11:16]
             status = jogo["fixture"]["status"]["long"]
 
             st.write("---")
             st.subheader(f"⚽ {home_team} vs {away_team}")
-            st.caption(f"Horário: {horario} UTC | Status: {status}")
+            st.caption(f"Horário: {horario} (Horário de Brasília) | Status: {status}")
 
             url_pred = f"https://v3.football.api-sports.io/fixtures/predictions?fixture={fixture_id}"
             res_pred = requests.get(url_pred, headers=HEADERS)
