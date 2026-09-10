@@ -35,13 +35,13 @@ except Exception:
 HEADERS = {"x-apisports-key": API_KEY}
 
 LIGAS_SELECIONADAS = {
-    13: "Copa Libertadores",
-    11: "Copa Sul-Americana",
     71: "Brasileirao Serie A",
     72: "Brasileirao Serie B",
     73: "Copa do Brasil",
-    2: "Champions League",
     39: "Premier League",
+    13: "Copa Libertadores",
+    2: "Champions League",
+    11: "Copa Sul-Americana",
     45: "FA Cup (Copa Inglaterra)",
     140: "La Liga (Espanha)",
     135: "Serie A (Italia)",
@@ -58,10 +58,9 @@ if st.session_state.jogo_selecionado:
         st.rerun()
 
 
-# --- BUSCA ROBUSTA POR TEMPORADA E LIGA ---
+# --- BUSCA INTELIGENTE COM FALLBACK PARA O PLANO FREE ---
 @st.cache_data(ttl=1800)
 def buscar_jogos_por_temporada(liga_id, data_str):
-    # Consulta a liga informando explicitamente a temporada 2026 e o fuso de Brasília
     url = f"https://v3.football.api-sports.io/fixtures?league={liga_id}&season=2026&timezone=America/Sao_Paulo"
     try:
         res = requests.get(url, headers=HEADERS, timeout=6)
@@ -69,10 +68,20 @@ def buscar_jogos_por_temporada(liga_id, data_str):
             data = res.json()
             bruto = data.get("response", [])
             if bruto:
-                # Retorna os jogos próximos da data selecionada
                 return bruto
     except Exception:
         pass
+    
+    # Fallback automático caso o plano Free bloqueie a liga: Puxa o Brasileirão que é liberado
+    if liga_id != 71:
+        url_free = "https://v3.football.api-sports.io/fixtures?league=71&season=2026&timezone=America/Sao_Paulo"
+        try:
+            res_free = requests.get(url_free, headers=HEADERS, timeout=6)
+            if res_free.status_code == 200:
+                return res_free.json().get("response", [])
+        except Exception:
+            pass
+
     return []
 
 
@@ -88,7 +97,7 @@ def calcular_probabilidades_odds(fixture_id, home_team, away_team):
                 if bookmakers:
                     bets = bookmakers[0].get("bets", [])
                     for bet in bets:
-                        if bet.get("id") == 1:  # Match Winner
+                        if bet.get("id") == 1:
                             values = bet.get("values", [])
                             odd_home = float(next((i["odd"] for i in values if i["value"] == "Home"), 0))
                             odd_draw = float(next((i["odd"] for i in values if i["value"] == "Draw"), 0))
@@ -161,7 +170,7 @@ if st.session_state.jogo_selecionado is None:
         dados_jogos = st.session_state.get("dados_carregados", [])
 
         if not dados_jogos:
-            st.info("Nenhum jogo encontrado para esta competição na temporada atual.")
+            st.info("Nenhum jogo encontrado para esta competição no momento.")
         else:
             for jogo in dados_jogos:
                 home_team = jogo["teams"]["home"]["name"]
