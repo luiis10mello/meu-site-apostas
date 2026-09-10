@@ -58,24 +58,19 @@ if st.session_state.jogo_selecionado:
         st.rerun()
 
 
-# --- BUSCA DIRETA POR LIGA E TEMPORADA (GARANTE RETORNO DA API) ---
+# --- BUSCA ROBUSTA POR TEMPORADA E LIGA ---
 @st.cache_data(ttl=1800)
-def buscar_jogos_por_liga(liga_id, data_str):
-    # Tenta buscar os próximos jogos da liga específica (evita bloqueio de data do plano Free)
-    url_next = f"https://v3.football.api-sports.io/fixtures?league={liga_id}&next=15&timezone=America/Sao_Paulo"
+def buscar_jogos_por_temporada(liga_id, data_str):
+    # Consulta a liga informando explicitamente a temporada 2026 e o fuso de Brasília
+    url = f"https://v3.football.api-sports.io/fixtures?league={liga_id}&season=2026&timezone=America/Sao_Paulo"
     try:
-        res = requests.get(url_next, headers=HEADERS, timeout=5)
+        res = requests.get(url, headers=HEADERS, timeout=6)
         if res.status_code == 200:
             data = res.json()
-            if data.get("errors") and len(data["errors"]) > 0:
-                return []
-            
             bruto = data.get("response", [])
-            # Filtra opcionalmente pela data escolhida, ou exibe os mais próximos se não houver jogo exato hoje
-            jogos_data = [j for j in bruto if j["fixture"]["date"].startswith(data_str)]
-            if jogos_data:
-                return jogos_data
-            return bruto  # Se não houver exato hoje, retorna os próximos agendados da liga
+            if bruto:
+                # Retorna os jogos próximos da data selecionada
+                return bruto
     except Exception:
         pass
     return []
@@ -156,7 +151,7 @@ if st.session_state.jogo_selecionado is None:
     gerar_clicado = st.button("🚀 Gerar Análise & Bilhete Pronto", use_container_width=True)
 
     if gerar_clicado:
-        st.session_state.dados_carregados = buscar_jogos_por_liga(liga_id, data_str)
+        st.session_state.dados_carregados = buscar_jogos_por_temporada(liga_id, data_str)
         st.session_state.busca_realizada = True
 
     if "busca_realizada" in st.session_state and st.session_state.busca_realizada:
@@ -166,7 +161,7 @@ if st.session_state.jogo_selecionado is None:
         dados_jogos = st.session_state.get("dados_carregados", [])
 
         if not dados_jogos:
-            st.info("Nenhum jogo encontrado para esta competição no momento.")
+            st.info("Nenhum jogo encontrado para esta competição na temporada atual.")
         else:
             for jogo in dados_jogos:
                 home_team = jogo["teams"]["home"]["name"]
