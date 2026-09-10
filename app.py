@@ -167,48 +167,7 @@ def calcular_mercados_especiais(fixture_id, home_team, away_team):
     return escanteios, cartoes, chutes
 
 
-# --- FUNÇÃO DE BUSCA SEGURA COM SUPORTE À LIGA ESPECÍFICA ---
-def buscar_jogos_por_liga_ou_data(liga_id, data_str):
-    url_fixtures = f"https://v3.football.api-sports.io/fixtures?date={data_str}&timezone=America/Sao_Paulo"
-    try:
-        res = requests.get(url_fixtures, headers=HEADERS, timeout=5)
-        if res.status_code == 200:
-            bruto = res.json().get("response", [])
-            dados_filtrados = [
-                j for j in bruto if j.get("league", {}).get("id") == liga_id
-            ]
-            if dados_filtrados:
-                return dados_filtrados
-    except Exception:
-        pass
-
-    # Jogos de contingência específicos por liga caso a API bloqueie no plano Free
-    jogos_por_liga_mock = {
-        13: [  # Copa Libertadores
-            {"fixture": {"id": 901, "date": f"{data_str}T19:00:00-03:00", "status": {"short": "NS", "long": "Not Started"}}, "teams": {"home": {"id": 1, "name": "River Plate"}, "away": {"id": 2, "name": "Palmeiras"}}, "league": {"id": 13}},
-            {"fixture": {"id": 902, "date": f"{data_str}T21:30:00-03:00", "status": {"short": "NS", "long": "Not Started"}}, "teams": {"home": {"id": 3, "name": "Flamengo"}, "away": {"id": 4, "name": "Boca Juniors"}}, "league": {"id": 13}},
-            {"fixture": {"id": 903, "date": f"{data_str}T21:30:00-03:00", "status": {"short": "NS", "long": "Not Started"}}, "teams": {"home": {"id": 5, "name": "São Paulo"}, "away": {"id": 6, "name": "Independiente del Valle"}}, "league": {"id": 13}}
-        ],
-        2: [  # Champions League
-            {"fixture": {"id": 911, "date": f"{data_str}T16:00:00-03:00", "status": {"short": "NS", "long": "Not Started"}}, "teams": {"home": {"id": 10, "name": "Real Madrid"}, "away": {"id": 11, "name": "Manchester City"}}, "league": {"id": 2}},
-            {"fixture": {"id": 912, "date": f"{data_str}T16:00:00-03:00", "status": {"short": "NS", "long": "Not Started"}}, "teams": {"home": {"id": 12, "name": "Bayern Munich"}, "away": {"id": 13, "name": "Paris Saint Germain"}}, "league": {"id": 2}}
-        ],
-        71: [  # Brasileirao Serie A
-            {"fixture": {"id": 921, "date": f"{data_str}T19:30:00-03:00", "status": {"short": "NS", "long": "Not Started"}}, "teams": {"home": {"id": 20, "name": "Botafogo"}, "away": {"id": 21, "name": "Fluminense"}}, "league": {"id": 71}},
-            {"fixture": {"id": 922, "date": f"{data_str}T20:00:00-03:00", "status": {"short": "NS", "long": "Not Started"}}, "teams": {"home": {"id": 22, "name": "Atlético-MG"}, "away": {"id": 23, "name": "Internacional"}}, "league": {"id": 71}}
-        ],
-        39: [  # Premier League
-            {"fixture": {"id": 931, "date": f"{data_str}T15:45:00-03:00", "status": {"short": "NS", "long": "Not Started"}}, "teams": {"home": {"id": 30, "name": "Liverpool"}, "away": {"id": 31, "name": "Chelsea"}}, "league": {"id": 39}},
-            {"fixture": {"id": 932, "date": f"{data_str}T16:00:00-03:00", "status": {"short": "NS", "long": "Not Started"}}, "teams": {"home": {"id": 32, "name": "Manchester United"}, "away": {"id": 33, "name": "Tottenham"}}, "league": {"id": 39}}
-        ]
-    }
-
-    return jogos_por_liga_mock.get(liga_id, [
-        {"fixture": {"id": 999, "date": f"{data_str}T20:00:00-03:00", "status": {"short": "NS", "long": "Not Started"}}, "teams": {"home": {"id": 99, "name": "Equipe Mandante"}, "away": {"id": 98, "name": "Equipe Visitante"}}, "league": {"id": liga_id}}
-    ])
-
-
-# --- ETAPA 1: LISTA DE JOGOS E BOTÃO DE GERAÇÃO ---
+# --- ETAPA 1: LISTA DE JOGOS ---
 if st.session_state.jogo_selecionado is None:
     col_liga, col_data = st.columns([2, 1])
 
@@ -223,36 +182,32 @@ if st.session_state.jogo_selecionado is None:
         data_selecionada = st.date_input("Data:", datetime.date.today())
 
     data_str = data_selecionada.strftime("%Y-%m-%d")
+    url_fixtures = f"https://v3.football.api-sports.io/fixtures?date={data_str}&timezone=America/Sao_Paulo"
+    res_fixtures = requests.get(url_fixtures, headers=HEADERS)
 
-    st.write("")
-    
-    # Botão de geração que você prefere
-    gerar_clicado = st.button("🚀 Gerar Análise & Bilhete Pronto", use_container_width=True)
+    dados_jogos = []
+    if res_fixtures.status_code == 200:
+        bruto = res_fixtures.json().get("response", [])
+        dados_jogos = [
+            j for j in bruto if j.get("league", {}).get("id") == liga_id
+        ]
 
-    if gerar_clicado:
-        st.session_state.dados_jogos = buscar_jogos_por_liga_ou_data(liga_id, data_str)
-        st.session_state.liga_nome_atual = LIGAS_SELECIONADAS[liga_id]
-        st.session_state.busca_executada = True
+    st.write("---")
+    st.subheader("📋 Jogos Encontrados")
 
-    if "busca_executada" in st.session_state and st.session_state.busca_executada:
-        st.write("---")
-        st.subheader(f"📋 Partidas Disponíveis ({st.session_state.get('liga_nome_atual', '')})")
+    if not dados_jogos:
+        st.info("Nenhum jogo agendado para esta competição na data escolhida.")
+    else:
+        for jogo in dados_jogos:
+            home_team = jogo["teams"]["home"]["name"]
+            away_team = jogo["teams"]["away"]["name"]
+            horario = jogo["fixture"]["date"][11:16]
+            status = jogo["fixture"]["status"]["short"]
 
-        dados_jogos = st.session_state.get("dados_jogos", [])
-
-        if not dados_jogos:
-            st.info("Nenhum jogo agendado para esta competição na data escolhida.")
-        else:
-            for jogo in dados_jogos:
-                home_team = jogo["teams"]["home"]["name"]
-                away_team = jogo["teams"]["away"]["name"]
-                horario = jogo["fixture"]["date"][11:16]
-                status = jogo["fixture"]["status"]["short"]
-
-                label_botao = f"⚽ {horario} | {home_team} vs {away_team} ({status})"
-                if st.button(label_botao, key=jogo["fixture"]["id"]):
-                    st.session_state.jogo_selecionado = jogo
-                    st.rerun()
+            label_botao = f"⚽ {horario} | {home_team} vs {away_team} ({status})"
+            if st.button(label_botao, key=jogo["fixture"]["id"]):
+                st.session_state.jogo_selecionado = jogo
+                st.rerun()
 
 # --- ETAPA 2: TELA DE ANÁLISE COMPLETA (ODDS + MERCADOS ESPECIAIS) ---
 else:
@@ -261,7 +216,7 @@ else:
     home_team = jogo["teams"]["home"]["name"]
     away_team = jogo["teams"]["away"]["name"]
     horario = jogo["fixture"]["date"][11:16]
-    status = jogo["fixture"]["status"]["long"] if "long" in jogo["fixture"]["status"] else "Pré-Jogo"
+    status = jogo["fixture"]["status"]["long"]
 
     st.subheader(f"⚽ {home_team} vs {away_team}")
     st.caption(f"Horário: {horario} (Brasília) | Status: {status}")
